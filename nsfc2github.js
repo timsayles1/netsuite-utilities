@@ -4,8 +4,10 @@
  * @NModuleScope Public
  */
 define(['N/query', 'N/config','N/runtime', 'N/https', 'N/encode', 'N/file', 'N/record'],
-// NS -> GIT Sync will sync any script to GitHub for a given user last name.
+// NS -> GIT Sync will sync any script to GitHub for a given user last name. Since GitHub is used as a reference, assuming latest updates in NetSuite, script will delete and recreate repository.
+
 //Script parameter fields: custscript_git_token, custscript_git_name, custscript_git_token, custscript_git_owner
+
 function(query, config, runtime, https, encode, file, record) {
 
 function _sendToGit(git_repo,id,type,title,deploy,gitToken,gitOwner) {
@@ -78,9 +80,15 @@ function getInputData() {
 			formData.name = accountId;
 			formData.description = coName + ' ' + runtime.envType;
 			formData.private = true;
+			formData.visibility = "private";
 			formData.has_issues = true;
-			formData.has_projects = true;
+			formData.has_projects = false
 			formData.has_wiki = true;
+			var git_url = "https://api.github.com/repos" + gitOwner + '/' + accountId;
+			var apiResponse=https.delete({
+				url: git_url,
+				headers:header
+			});
 			var git_url = "https://api.github.com/user/repos";
 			var apiResponse=https.post({
 				url: git_url,
