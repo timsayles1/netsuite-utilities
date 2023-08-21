@@ -1,0 +1,185 @@
+/**
+ * @NApiVersion 2.1
+ * @NScriptType MapReduceScript
+ * @NModuleScope Public
+ */
+define(['N/query', 'N/search', 'N/runtime', 'N/https', 'N/encode', 'N/file', 'N/record'],
+// This script will send specified NetSuite File Cabinet files and script to a GitHub repository
+// Script parameter fields: custscript_git_token, custscript_git_name, custscript_git_token, custscript_git_owner
+
+function(query, search, runtime, https, encode, file, record) {
+
+function _sendToGit(git_repo, id, type, title, deploy, gitToken, gitOwner) {
+	try {
+		if (!type) {
+			var type = 'Other';
+		}		
+		var fileObj = file.load({
+			id: id
+		});
+		var fileSha = fileObj.description||'';
+		var fileContents = fileObj.getContents();
+		var encodedFile = encode.convert({
+			string: fileContents,
+			inputEncoding: encode.Encoding.UTF_8,
+			outputEncoding: encode.Encoding.BASE_64
+		});
+		if (title && deploy) {
+			var formMessage = 'Name: ' + title + ' Deployment: ' + deploy;
+		}
+		else {
+			var formMessage = fileObj.name;
+		}
+		var formData = {};
+		formData.message = formMessage;
+		if (fileSha) {
+			formData.sha = fileSha;
+		}
+		formData.content = encodedFile;
+		var headers = '{"Authorization":"Token ' + gitToken + '","Content-Type":"multipart/form-data"}';
+		var header = JSON.parse(headers)
+		var git_url = "https://api.github.com/repos/" + gitOwner + "/"+ git_repo +"/contents/" + type + "/" + fileObj.name;
+		var apiResponse=https.put({
+			url: git_url,
+			headers:header,
+			body:JSON.stringify(formData)
+		});
+		var responseBody = JSON.parse(apiResponse.body);
+		var responseContent = responseBody.content;
+		log.debug('response', responseContent.sha);
+	}
+	catch(e) {
+		log.debug('Failed to send ' + id,e.message);
+	}
+	fileObj.description = responseContent.sha;
+	var fileUpId = fileObj.save();
+	return true;
+}
+
+function getInputData() {
+	var currentScript = runtime.getCurrentScript();
+	const gitToken = currentScript.getParameter({name: 'custscript_git_token'}); // GitHub API Token
+	const gitOwner = currentScript.getParameter({name: 'custscript_git_owner'}); // GitHub Username
+	const userLastName = currentScript.getParameter({name: 'custscript_git_name'}); // Last name of user you want to search
+	try {
+	var usql = `select id from employee where lastname like '${userLastName}' or entityid like '%${userLastName}%'`;
+		var uResults = query.runSuiteQL({query: usql}).asMappedResults();
+		var uId = uResults[0].id||'';
+		if (uId) {
+			var searchFiles = searchForFiles(uId);
+			var searchInfo = searchForInfo(uId, searchFiles); 
+			var headers = '{"Authorization":"Token ' + gitToken + '","Content-Type":"text/plain"}';
+			var header = JSON.parse(headers)
+			var accountId = runtime.accountId;
+			var formData = {};
+			formData.name = accountId;
+			formData.private = true;
+			formData.has_issues = true;
+			formData.has_projects = true;
+			formData.has_wiki = true;
+			var git_url = "https://api.github.com/user/repos";
+			var apiResponse=https.post({
+				url: git_url,
+				headers:header,
+				body:JSON.stringify(formData)
+			});
+			var responseBody = JSON.parse(apiResponse.body);
+			var repoName = responseBody.name||'';
+			return searchInfo;
+		}
+		else {
+			return false;
+		}
+	}
+	catch(e) {
+		log.error({title: 'GetInputData - error', details: {'error': e}});
+	}
+}
+
+function searchForFiles(uId) {
+	try {
+		var sql = `
+			select f.id, f.name, f.filetype, f.folder, replace(mf.appfolder,' : ','/') path from file f 
+			join systemnote sn on sn.recordid = f.id 
+			join mediaitemfolder mf on mf.id = f.folder
+			where field='MEDIAITEM.NKEY' and (f.filetype = 'JAVASCRIPT' or f.filetype = 'XMLDOC') and mf.appfolder like '%SuiteScripts%' and sn.name = ${uId}
+		`;
+		var fileResults = query.runSuiteQL({query: sql}).asMappedResults();
+	} catch(e) {		
+		log.error({title: 'selectFiles - error', details: {'error': e}});
+	}	
+	return fileResults;
+}
+
+function searchForInfo(uId, searchFiles) {
+	try {	
+		var sql = `
+			select 'Scheduled' type, sd.id, sd.title, sd.scriptid, sd.script, sd.deploymentid, ss.scriptid, ss.owner, ss.scriptfile from scheduledscriptdeployment sd join scheduledscript ss on ss.id = sd.script  where sd.isdeployed = 'T' and ss.owner = ${uId}
+			union
+			select 'Client' type, cd.id, cd.recordtype, cd.scriptid, cd.script, cd.deploymentid, cs.scriptid, cs.owner, cs.scriptfile from clientscriptdeployment cd join clientscript cs on cs.id = cd.script where cd.isdeployed = 'T' and cs.owner = ${uId}
+			union
+			select 'MRS' type, md.id, md.title, md.scriptid, md.script, md.deploymentid, ms.scriptid, ms.owner, ms.scriptfile from mapreducescriptdeployment md join mapreducescript ms on ms.id = md.script where md.isdeployed= 'T' and ms.owner = ${uId}
+			union
+			select 'User' type, ud.id, ud.recordtype, ud.scriptid, ud.script, ud.deploymentid, us.scriptid, us.owner, us.scriptfile from usereventscriptdeployment ud join usereventscript us on us.id = ud.script where ud.isdeployed= 'T' and us.owner = ${uId}
+			union
+			select 'Suitelet' type, sd.id, sd.title, sd.scriptid, sd.script, sd.deploymentid, su.scriptid, su.owner, su.scriptfile from suiteletdeployment sd join suitelet su on su.id = sd.script where sd.isdeployed='T' and su.owner = ${uId}
+		`;
+		var infoResults = query.runSuiteQL({query: sql}).asMappedResults();
+		searchFiles.forEach(function(file) {
+			var fileId = Number(file.id);
+			for (var i = 0; i < infoResults.length; i++) {
+				let infoFileId = Number(infoResults[i].scriptfile);
+				if (fileId === infoFileId) {
+					file.type = infoResults[i].type;
+					file.title = infoResults[i].title;
+					file.scriptid = infoResults[i].scriptid;
+					break;
+				}
+			}
+			return true;
+		});
+	} catch(e) {		
+		log.error({title: 'selectInfo - error', details: {'error': e}});
+	}	
+	return searchFiles;
+}
+
+function map(context) {
+	var currentScript = runtime.getCurrentScript();
+	const gitToken = currentScript.getParameter({name: 'custscript_git_token'}); // GitHub API Token
+	const gitOwner = currentScript.getParameter({name: 'custscript_git_owner'}); // GitHub Username
+	const userLastName = currentScript.getParameter({name: 'custscript_git_name'}); // Last name of user you want to search
+	var data = JSON.parse(context.value);
+	var repoName = runtime.accountId;
+	_sendToGit(repoName, data.id, data.type, data.title, data.scriptid, gitToken, gitOwner);
+}
+
+function summarize(context) {
+	var currentScript = runtime.getCurrentScript();
+	const gitToken = currentScript.getParameter({name: 'custscript_git_token'}); // GitHub API Token
+	const gitOwner = currentScript.getParameter({name: 'custscript_git_owner'}); // GitHub Username
+	const userLastName = currentScript.getParameter({name: 'custscript_git_name'}); // Last name of user you want to search
+	var folders = ["Client","MRS","Other","Scheduled","Suitelet","User"];
+	folders.forEach(function(f) {
+	var formData = {};
+	formData.message = f;
+	formData.content = "";
+	var header = new Array();
+	var headers = '{"Authorization":"Token ' + gitToken + '","Content-Type":"multipart/form-data"}';
+	var header = JSON.parse(headers)
+	var git_url = "https://api.github.com/repos/" + gitOwner + "/" + runtime.accountId + "/contents/" + f + "/header.txt";
+	var apiResponse=https.put({
+      url: git_url,
+      headers:header,
+	  body:JSON.stringify(formData)
+    });
+	return true;
+	});
+}	
+
+  return {
+    getInputData: getInputData,
+    map: map,
+	  summarize: summarize
+  };
+});
