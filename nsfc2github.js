@@ -3,13 +3,12 @@
  * @NScriptType MapReduceScript
  * @NModuleScope Public
  */
-define(['N/query', 'N/search', 'N/runtime', 'N/https', 'N/encode', 'N/file', 'N/record'],
-// This script will send specified NetSuite File Cabinet files and script to a GitHub repository
-// Script parameter fields: custscript_git_token, custscript_git_name, custscript_git_token, custscript_git_owner
+define(['N/query', 'N/config','N/runtime', 'N/https', 'N/encode', 'N/file', 'N/record'],
+// NS -> GIT Sync will sync any script to GitHub for a given user last name.
+//Script parameter fields: custscript_git_token, custscript_git_name, custscript_git_token, custscript_git_owner
+function(query, config, runtime, https, encode, file, record) {
 
-function(query, search, runtime, https, encode, file, record) {
-
-function _sendToGit(git_repo, id, type, title, deploy, gitToken, gitOwner) {
+function _sendToGit(git_repo,id,type,title,deploy,gitToken,gitOwner) {
 	try {
 		if (!type) {
 			var type = 'Other';
@@ -61,6 +60,10 @@ function getInputData() {
 	const gitToken = currentScript.getParameter({name: 'custscript_git_token'}); // GitHub API Token
 	const gitOwner = currentScript.getParameter({name: 'custscript_git_owner'}); // GitHub Username
 	const userLastName = currentScript.getParameter({name: 'custscript_git_name'}); // Last name of user you want to search
+	var configRecObj = config.load({
+		type: config.Type.COMPANY_INFORMATION
+	});
+	var coName = configRecObj.getValue({fieldId: 'companyname'});
 	try {
 	var usql = `select id from employee where lastname like '${userLastName}' or entityid like '%${userLastName}%'`;
 		var uResults = query.runSuiteQL({query: usql}).asMappedResults();
@@ -73,6 +76,7 @@ function getInputData() {
 			var accountId = runtime.accountId;
 			var formData = {};
 			formData.name = accountId;
+			formData.description = coName + ' ' + runtime.envType;
 			formData.private = true;
 			formData.has_issues = true;
 			formData.has_projects = true;
@@ -177,9 +181,9 @@ function summarize(context) {
 	});
 }	
 
-  return {
-    getInputData: getInputData,
-    map: map,
-	  summarize: summarize
-  };
+    return {
+        getInputData: getInputData,
+        map: map,
+		summarize: summarize
+        };
 });
