@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+
+<style>
+.gradient-custom {
+  /* fallback for old browsers */
+  background: #183e7a;
+
+  /* Chrome 10-25, Safari 5.1-6 */
+  background: -webkit-linear-gradient(to right, rgba(24,62,122), rgba(38,93,181));
+
+  /* W3C, IE 10+/ Edge, Firefox 16+, Chrome 26+, Opera 12+, Safari 7+ */
+  background: linear-gradient(to right, rgba(24,62,122), rgba(38,93,181))
+}
+</style>
+<title>Banking Import History Search</title>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<nav class="navbar fixed-top navbar-expand-lg navbar-dark gradient-custom">
+<div class="container-fluid">
+    <a class="navbar-brand" href="#">
+      <img
+        src="/images/logos/netsuite-oracle.svg"
+        class="me-2"
+        height="30"
+        alt="NetSuite Logo"
+        loading="lazy"
+      />
+      <small>NetSuite | Banking Import History Search</small>
+    </a>
+  </div>
+</nav>
+<div class="form-row align-items-center" style="padding-top:50px; padding-left:15px; padding-right:15px">
+<form id ="form" method="get" action="/app/accounting/transactions/bankimport/bankimporthistory.nl" target="output_frame">
+	<div class="col-sm-3 my-1" style="padding-top:20px;">
+		<input name="type" id="type" type="hidden" value="bankImportHistory">
+	</div>
+	<div class="col-sm-3 my-1" style="padding-top:20px;">
+		<label for="id" class="form-label">Import ID</label>
+		<input name="id" type="text" class="form-control form-control-sm" id="id" placeholder="bank import id" required>
+	</div>
+	<div class="col-sm-3 my-1" style="padding-top:50px;">
+		 <button type="submit" class="btn btn-primary">Submit</button>
+		 <button class="btn btn-outline-secondary" id="back" type="button">Back</button>
+    </div>
+</form>
+</div>
+<div class="row">
+        <div class="col-xs-12 col-sm-12 col-md-12">
+            <iframe style="width: 100vw;height: 100vh;position: relative;" name="output_frame" id="output_frame" src="" frameborder="0" allowfullscreen></iframe>
+        </div>
+</div>
+
+
+
+<script>
+const forms = document.querySelector('form');
+forms.addEventListener('click', event => {
+  const { target } = event;
+
+	if (target.id === 'back') {
+	window.location.replace("/app/center/card.nl?success=true");
+	}
+});
+</script>
+</body>
+</html>
